@@ -46,6 +46,7 @@ import java.util.List;
 import java.util.Properties;
 import java.util.Set;
 import java.util.Vector;
+import java.net.URI;
 
 /**
  * YCSB binding for <a href="http://redis.io/">Redis</a>.
@@ -83,10 +84,20 @@ public class RedisClient extends DB {
       jedis = new JedisCluster(jedisClusterNodes);
     } else {
       String redisTimeout = props.getProperty(TIMEOUT_PROPERTY);
-      if (redisTimeout != null){
-        jedis = new Jedis(host, port, Integer.parseInt(redisTimeout));
+      String password    = props.getProperty(PASSWORD_PROPERTY); 
+      if (password != null){
+        String redisURI = String.format("rediss://%s:%d", host, port);
+        if (redisTimeout != null){
+          jedis = new Jedis(URI.create(redisURI), Integer.parseInt(redisTimeout));
+        } else {
+          jedis = new Jedis(URI.create(redisURI));
+        }
       } else {
-        jedis = new Jedis(host, port);
+        if (redisTimeout != null){
+          jedis = new Jedis(host, port, Integer.parseInt(redisTimeout));
+        } else {
+          jedis = new Jedis(host, port);
+        }
       }
       ((Jedis) jedis).connect();
     }
