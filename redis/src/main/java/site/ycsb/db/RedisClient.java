@@ -47,6 +47,21 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.Vector;
 import java.net.URI;
+import java.security.SecureRandom;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
+
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLException;
+import javax.net.ssl.SSLHandshakeException;
+import javax.net.ssl.SSLParameters;
+import javax.net.ssl.SSLPeerUnverifiedException;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
+import javax.net.ssl.X509TrustManager;
 
 /**
  * YCSB binding for <a href="http://redis.io/">Redis</a>.
@@ -64,6 +79,30 @@ public class RedisClient extends DB {
   public static final String TIMEOUT_PROPERTY = "redis.timeout";
 
   public static final String INDEX_KEY = "_indices";
+  public static SSLParameters sslParameters = new SSLParameters();
+  HostnameVerifier allHostsValid = new HostnameVerifier() {
+    public boolean verify(String hostname, SSLSession session) {
+      return true;
+    }
+  };
+  static SSLSocketFactory trustAllSocketFactory() throws Exception {
+    TrustManager[] trustAllCerts = new TrustManager[] {new X509TrustManager() {
+      public java.security.cert.X509Certificate[] getAcceptedIssuers() {
+        return null;
+      }
+      public void checkClientTrusted(X509Certificate[] certs, String authType) {
+
+      }
+      public void checkServerTrusted(X509Certificate[] certs, String authType) {
+
+      }
+    }
+    };
+
+    SSLContext sc = SSLContext.getInstance("TLS");
+    sc.init(null, trustAllCerts, new SecureRandom());
+    return sc.getSocketFactory();
+  }
 
   public void init() throws DBException {
     Properties props = getProperties();
@@ -84,13 +123,21 @@ public class RedisClient extends DB {
       jedis = new JedisCluster(jedisClusterNodes);
     } else {
       String redisTimeout = props.getProperty(TIMEOUT_PROPERTY);
-      String password    = props.getProperty(PASSWORD_PROPERTY); 
+      String password    = props.getProperty(PASSWORD_PROPERTY);
+      SSLSocketFactory sslSocketFactory;
+      try {
+        sslSocketFactory = trustAllSocketFactory();
+      } catch (Exception e){
+        e.printStackTrace();
+        return;
+      }
       if (password != null){
         String redisURI = String.format("rediss://%s:%d", host, port);
         if (redisTimeout != null){
-          jedis = new Jedis(URI.create(redisURI), Integer.parseInt(redisTimeout));
+          jedis = new Jedis(URI.create(redisURI), Integer.parseInt(redisTimeout), 
+          sslSocketFactory, sslParameters, allHostsValid);
         } else {
-          jedis = new Jedis(URI.create(redisURI));
+          jedis = new Jedis(URI.create(redisURI), sslSocketFactory, sslParameters, allHostsValid);
         }
       } else {
         if (redisTimeout != null){
